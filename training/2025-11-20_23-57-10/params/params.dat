@@ -1,0 +1,23 @@
+{
+    "num_iot": 50,
+    "num_fog": 5,
+    "task_arrival_prob": 0.3,
+    "num_episodes": 10,
+    "batch_size": 32,
+    "lr": 0.001,
+    "optimizer": "rms_prop",
+    "learning_freq": 10,
+    "seed": 0,
+    "plot": false,
+    "random": false,
+    "path": null,
+    "training_var": null,
+    "plot_color": "red",
+    "plot_label": "X",
+    "hybrid": false,
+    "qubits": 3,
+    "layers": 3,
+    "memory_size": 1000,
+    "non_sequential": false,
+    "parallel_layers": 2
+}

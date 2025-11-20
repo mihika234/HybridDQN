@@ -1,0 +1,2 @@
+
+Episode:0: Total task:1502.000: Processes task:304.000: Dropped:1198.000: Reward: 16.333: Dropped Ratio:0.798: Delay:3.720: Energy:0.043

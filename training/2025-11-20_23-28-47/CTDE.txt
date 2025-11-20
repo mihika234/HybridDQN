@@ -1,0 +1,11 @@
+
+Episode:0: Total task:1502.000: Processes task:304.000: Dropped:1198.000: Reward: 16.333: Dropped Ratio:0.798: Delay:3.720: Energy:0.043
+Episode:1: Total task:1548.000: Processes task:318.000: Dropped:1230.000: Reward: 16.308: Dropped Ratio:0.795: Delay:3.997: Energy:0.054
+Episode:2: Total task:1523.000: Processes task:290.000: Dropped:1233.000: Reward: 16.591: Dropped Ratio:0.810: Delay:4.138: Energy:0.053
+Episode:3: Total task:1483.000: Processes task:301.000: Dropped:1182.000: Reward: 16.334: Dropped Ratio:0.797: Delay:3.834: Energy:0.043
+Episode:4: Total task:1492.000: Processes task:334.000: Dropped:1158.000: Reward: 16.013: Dropped Ratio:0.776: Delay:4.314: Energy:0.062
+Episode:5: Total task:1507.000: Processes task:277.000: Dropped:1230.000: Reward: 16.691: Dropped Ratio:0.816: Delay:3.942: Energy:0.052
+Episode:6: Total task:1522.000: Processes task:310.000: Dropped:1212.000: Reward: 16.302: Dropped Ratio:0.796: Delay:3.642: Energy:0.043
+Episode:7: Total task:1560.000: Processes task:354.000: Dropped:1206.000: Reward: 15.903: Dropped Ratio:0.773: Delay:3.847: Energy:0.047
+Episode:8: Total task:1544.000: Processes task:346.000: Dropped:1198.000: Reward: 15.966: Dropped Ratio:0.776: Delay:3.945: Energy:0.050
+Episode:9: Total task:1480.000: Processes task:362.000: Dropped:1118.000: Reward: 15.613: Dropped Ratio:0.755: Delay:4.069: Energy:0.057
