@@ -341,13 +341,7 @@ def main(args):
 
     # Create a timestamp directory to save model, parameter and log files
     training_dir = \
-<<<<<<< HEAD
         'training/' + (((str(datetime.now().date()) + '_' + str(datetime.now().hour).zfill(2) + '-' + str(datetime.now().minute).zfill(2) + '-' + str(datetime.now().second).zfill(2) + '/')) if args.path is None else (args.path + '/'))
-=======
-        ('training/' + ('' if args.path is None else args.path + '/') +
-         str(datetime.now().date()) + '_' + str(datetime.now().hour).zfill(2) + '-' +
-         str(datetime.now().minute).zfill(2) + '-' + str(datetime.now().second).zfill(2) + '/')
->>>>>>> a4a0157 (first commit)
 
     # Delete if a directory with the same name already exists
     if os.path.exists(training_dir):
@@ -385,13 +379,8 @@ def main(args):
                                         hybrid=args.hybrid,
                                         qubits=args.qubits,
                                         layers=args.layers,
-                                        non_sequential=args.non_sequential,
-<<<<<<< HEAD
-                                        parallel_layers=args.parallel_layers,
-                                        training_dir=training_dir
-=======
-                                        parallel_layers=args.parallel_layers
->>>>>>> a4a0157 (first commit)
+                                        training_dir=training_dir,
+                                        weights=args.weights
                                         )
 
     for _ in range(args.num_iot):
@@ -451,7 +440,7 @@ if __name__ == "__main__":
     parser.add_argument('--lr', type=float, default=0.001,
                         help='learning rate for optimizer (default: 0.001)')
     parser.add_argument('--optimizer', type=str, default='rms_prop',
-                        help='optimizer for updating the NN (default: rms_prop), adam, gd, rms_prop')
+                        help='optimizer for updating the NN (default: rms_prop), adam, adam_ams (adam with amsgrad) gd, rms_prop')
     parser.add_argument('--learning_freq', type=int, default=10,
                         help='frequency of updating main/eval network (default: 10)')
     parser.add_argument('--seed', type=int, default=0, help='random seed (default: 0)')
@@ -470,14 +459,9 @@ if __name__ == "__main__":
     parser.add_argument('--hybrid', default=False, action='store_true', help='use hybrid DQN (default: False)')
     parser.add_argument('--qubits', type=int, default=3, help='number of qubits (default: 3)')
     parser.add_argument('--layers', type=int, default=3, help='number of layers (default: 3)')
-<<<<<<< HEAD
-=======
-    parser.add_argument('--dueling', default=False, action='store_true', help='use dueling DQN (default: False)')
-    parser.add_argument('--double', default=False, action='store_true', help='use double DQN (default: False)')
->>>>>>> a4a0157 (first commit)
     parser.add_argument('--memory_size', type=int, default=1000, help='memory size (default: 1000)')
-    parser.add_argument('--non_sequential', default=False, action='store_true', help='use non sequential VQC (default: False)')
-    parser.add_argument('--parallel_layers', type=int, default=2, help='number of parallel layers in non sequential vqc (default: 3)')
+    parser.add_argument('--weights', type=str, default=None, 
+                       help='path to pre-trained weights (default: None)')
     args = parser.parse_args()
 
     main(args)
