@@ -7,6 +7,7 @@ from collections import deque
 
 
 class QuantumNetwork(nn.Module):
+<<<<<<< HEAD
     def __init__(
         self,
         n,              # number of qubits
@@ -23,10 +24,15 @@ class QuantumNetwork(nn.Module):
     ):
         super(QuantumNetwork, self).__init__()
 
+=======
+    def __init__(self, n, layers, n_actions, n_lstm, n_lstm_state, n_features, n_l1, batch_size, dueling, seed, non_sequential, parallel_layers):
+        super(QuantumNetwork, self).__init__()
+>>>>>>> a4a0157 (first commit)
         self.n = n
         self.layers = layers
         self.parallel_layers = parallel_layers
 
+<<<<<<< HEAD
         # TensorCircuit backend
         self.K = tc.set_backend("tensorflow")
 
@@ -34,11 +40,20 @@ class QuantumNetwork(nn.Module):
         self.n_lstm = n_lstm
         self.batch_size = batch_size
         self.state_dim = n_lstm + n_features  # full classical state seen by PQC
+=======
+        self.K = tc.set_backend("tensorflow")
+        self.c = tc.Circuit(n)
+
+        self.n_lstm = n_lstm
+        self.batch_size = batch_size
+        self.dueling = dueling
+>>>>>>> a4a0157 (first commit)
 
         torch.cuda.manual_seed(seed)
 
         self.lstm = nn.LSTM(n_lstm_state, n_lstm, batch_first=True)
 
+<<<<<<< HEAD
         # Quantum parameters and layer
         if not non_sequential:
             # weights: [layers, n_qubits, 3] for RZ-RY-RZ
@@ -112,11 +127,67 @@ class QuantumNetwork(nn.Module):
         output = self.K.stack(
             [self.K.real(c.expectation((tc.gates.z(), [q]))) for q in range(self.n)]
         )
+=======
+
+        if not non_sequential:
+            self.weights = torch.nn.Parameter(torch.empty(layers, n, 3))
+            self.quantum_layer = tc.interfaces.torch_interface(self.K.vmap(self.vqc, vectorized_argnums=0), jit=True)
+
+            self.nn_input = nn.Sequential(
+                    nn.Linear(n_lstm + n_features, n),
+                    nn.ReLU()
+                    )
+        else:
+            self.weights = torch.nn.Parameter(torch.empty(parallel_layers, layers, n, 3))
+            self.quantum_layer = tc.interfaces.torch_interface(self.K.vmap(self.non_sequential_vqc, vectorized_argnums=0), jit=True)
+
+            self.nn_input = nn.Sequential(
+                    nn.Linear(n_lstm + n_features, n // self.parallel_layers),
+                    nn.ReLU()
+                    )
+
+        nn.init.xavier_uniform_(self.weights)
+
+        self.nn_output = nn.Sequential(
+                nn.Linear(n, n_l1),
+                nn.ReLU()
+                )
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        if dueling:
+            self.value_stream = nn.Linear(n_l1, 1)
+            self.advantage_stream = nn.Linear(n_l1, n_actions)
+        else:
+            self.output = nn.Linear(n_l1, n_actions)
+
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, mean=0., std=0.3)
+                nn.init.constant_(m.bias, 0.1)
+
+    @tf.function
+    def vqc(self, inputs, weights):
+        for i in range(self.layers):
+            for j in range(self.n):
+                self.c.rx(j, theta=inputs[j])
+                self.c.ry(j, theta=inputs[j])
+            for j in range(self.n):
+                self.c.rz(j, theta=weights[i, j, 0])
+                self.c.ry(j, theta=weights[i, j, 1])
+                self.c.rz(j, theta=weights[i, j, 2])
+            for j in range(self.n - 1):
+                self.c.cnot(j, j + 1)
+            self.c.cnot(self.n - 1, 0)
+
+        output = self.K.stack([self.K.real(self.c.expectation((tc.gates.z(), [i]))) for i in range(self.n)])
+>>>>>>> a4a0157 (first commit)
 
         return output
 
     @tf.function
     def non_sequential_vqc(self, inputs, weights):
+<<<<<<< HEAD
         # keep the old non_sequential implementation if you need it,
         # or raise an error if you don't plan to use this mode:
         raise NotImplementedError("non_sequential_vqc is not implemented with the new architecture.")
@@ -150,11 +221,33 @@ class QuantumNetwork(nn.Module):
 
     def forward(self, s, lstm_s):
         # device placement + numpy → tensor conversion
+=======
+        results = []
+        for i in range(self.parallel_layers):
+            for j in range(self.layers):
+                for k in range(self.n // self.parallel_layers):
+                    self.c.rx(self.parallel_layers * i + k, theta=inputs[k])
+                for k in range(self.n // self.parallel_layers):
+                    self.c.rz(self.parallel_layers * i + k, theta=weights[i, j, k, 0])
+                    self.c.ry(self.parallel_layers * i + k, theta=weights[i, j, k, 1])
+                    self.c.rz(self.parallel_layers * i + k, theta=weights[i, j, k, 2])
+                for k in range(self.n // self.parallel_layers - 1):
+                    self.c.cnot(self.parallel_layers * i + k, self.parallel_layers * i + k + 1)
+                self.c.cnot(self.n // self.parallel_layers - 1, 0)
+
+            result = self.K.stack([self.K.real(self.c.expectation((tc.gates.z(), [j]))) for j in range(self.parallel_layers * i, self.parallel_layers * i + self.n // self.parallel_layers)])
+            results.append(result)
+        output = self.K.shape_concat(results, axis=0)
+        return output
+
+    def forward(self, s, lstm_s):
+>>>>>>> a4a0157 (first commit)
         if isinstance(s, np.ndarray):
             s = torch.FloatTensor(s).to(self.device)
         if isinstance(lstm_s, np.ndarray):
             lstm_s = torch.FloatTensor(lstm_s).to(self.device)
 
+<<<<<<< HEAD
         # LSTM over history [B, T, n_lstm_state]
         h_0 = torch.zeros(1, lstm_s.shape[0], self.n_lstm, device=lstm_s.device)
         c_0 = torch.zeros(1, lstm_s.shape[0], self.n_lstm, device=lstm_s.device)
@@ -179,10 +272,38 @@ class QuantumNetwork(nn.Module):
 
 class ClassicalNetwork(nn.Module):
     def __init__(self, n_actions, n_features, n_lstm_state, n_l1, n_lstm, batch_size, seed):
+=======
+        h_0 = torch.zeros(1, lstm_s.shape[0], self.n_lstm, device=lstm_s.device)
+        c_0 = torch.zeros(1, lstm_s.shape[0], self.n_lstm, device=lstm_s.device)
+
+        lstm_output, _ = self.lstm(lstm_s, (h_0, c_0))
+        lstm_output = lstm_output[:, -1, :].reshape(-1, self.n_lstm)
+
+        x = torch.cat([lstm_output, s], dim=1)
+
+        x = self.nn_input(x)
+        x = self.quantum_layer(x, self.weights)
+        x = self.nn_output(x)
+
+        if self.dueling:
+            V = self.value_stream(x)
+            A = self.advantage_stream(x)
+            out = V + A - A.mean(dim=1, keepdim=True)
+            return out
+        else:
+            return self.output(x)
+
+class ClassicalNetwork(nn.Module):
+    def __init__(self, n_actions, n_features, n_lstm_state, n_l1, n_lstm, batch_size, dueling, seed):
+>>>>>>> a4a0157 (first commit)
         super(ClassicalNetwork, self).__init__()
 
         self.n_lstm = n_lstm
         self.batch_size = batch_size
+<<<<<<< HEAD
+=======
+        self.dueling = dueling
+>>>>>>> a4a0157 (first commit)
 
         torch.cuda.manual_seed(seed)
 
@@ -193,7 +314,15 @@ class ClassicalNetwork(nn.Module):
         self.fc1 = nn.Linear(n_lstm + n_features, n_l1)
         self.fc12 = nn.Linear(n_l1, n_l1)
 
+<<<<<<< HEAD
         self.output = nn.Linear(n_l1, n_actions)
+=======
+        if dueling:
+            self.value_stream = nn.Linear(n_l1, 1)
+            self.advantage_stream = nn.Linear(n_l1, n_actions)
+        else:
+            self.output = nn.Linear(n_l1, n_actions)
+>>>>>>> a4a0157 (first commit)
 
         for m in self.modules():
             if isinstance(m, nn.Linear):
@@ -217,7 +346,17 @@ class ClassicalNetwork(nn.Module):
         x = self.relu(self.fc1(x))
         x = self.relu(self.fc12(x))
 
+<<<<<<< HEAD
         return self.output(x)
+=======
+        if self.dueling:
+            V = self.value_stream(x)
+            A = self.advantage_stream(x)
+            out = V + A - A.mean(dim=1, keepdim=True)
+            return out
+        else:
+            return self.output(x)
+>>>>>>> a4a0157 (first commit)
 class HybridDQN:
 
     def __init__(self,
@@ -233,6 +372,11 @@ class HybridDQN:
                  batch_size=32,
                  e_greedy_increment=0.00025,
                  n_lstm_step=10,
+<<<<<<< HEAD
+=======
+                 dueling=False,
+                 double_q=False,
+>>>>>>> a4a0157 (first commit)
                  N_L1=20,
                  N_lstm=20,
                  optimizer='rms_prop',
@@ -241,8 +385,12 @@ class HybridDQN:
                  qubits=3,
                  layers=3,
                  non_sequential=False,
+<<<<<<< HEAD
                  parallel_layers=2,
                  training_dir=''):
+=======
+                 parallel_layers=2):
+>>>>>>> a4a0157 (first commit)
 
         self.n_actions = n_actions
         self.n_features = n_features
@@ -254,6 +402,11 @@ class HybridDQN:
         self.batch_size = batch_size    # select self.batch_size number of time sequence for learning
         self.epsilon_increment = e_greedy_increment
         self.epsilon = 0 if e_greedy_increment is not None else self.epsilon_max
+<<<<<<< HEAD
+=======
+        self.dueling = dueling
+        self.double_q = double_q
+>>>>>>> a4a0157 (first commit)
         self.learn_step_counter = 0
         self.N_L1 = N_L1
 
@@ -271,6 +424,7 @@ class HybridDQN:
 
 
         if hybrid:
+<<<<<<< HEAD
             self.target_net = QuantumNetwork(qubits, layers, n_actions, N_lstm, self.n_lstm_state, n_features, N_L1, batch_size, seed, non_sequential, parallel_layers)
             #self.target_net.draw_circuit(training_dir + 'circuit.png')
             self.target_net.to(self.device)
@@ -280,6 +434,16 @@ class HybridDQN:
             self.target_net = ClassicalNetwork(n_actions, n_features, self.n_lstm_state, N_L1, N_lstm, batch_size, seed)
             self.target_net.to(self.device)
             self.eval_net = ClassicalNetwork(n_actions, n_features, self.n_lstm_state, N_L1, N_lstm, batch_size, seed)
+=======
+            self.target_net = QuantumNetwork(qubits, layers, n_actions, N_lstm, self.n_lstm_state, n_features, N_L1, batch_size, dueling, seed, non_sequential, parallel_layers)
+            self.target_net.to(self.device)
+            self.eval_net = QuantumNetwork(qubits, layers, n_actions, N_lstm, self.n_lstm_state, n_features, N_L1, batch_size, dueling, seed, non_sequential, parallel_layers)
+            self.eval_net.to(self.device)
+        else:
+            self.target_net = ClassicalNetwork(n_actions, n_features, self.n_lstm_state, N_L1, N_lstm, batch_size, dueling, seed)
+            self.target_net.to(self.device)
+            self.eval_net = ClassicalNetwork(n_actions, n_features, self.n_lstm_state, N_L1, N_lstm, batch_size, dueling, seed)
+>>>>>>> a4a0157 (first commit)
             self.eval_net.to(self.device)
 
         if optimizer == 'adam':
@@ -380,7 +544,16 @@ class HybridDQN:
         with torch.no_grad():
             q_target_next = self.target_net(next_state, lstm_next_state)
 
+<<<<<<< HEAD
             q_next_selected = q_target_next.max(dim=1)[0]
+=======
+            if self.double_q:
+                q_eval_next = self.eval_net(next_state, lstm_next_state)
+                max_action = q_eval_next.argmax(dim=1)
+                q_next_selected = q_target_next.gather(1, max_action.unsqueeze(1)).squeeze(1)
+            else:
+                q_next_selected = q_target_next.max(dim=1)[0]
+>>>>>>> a4a0157 (first commit)
 
             q_target_values = reward + self.gamma * q_next_selected
 
