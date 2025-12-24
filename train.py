@@ -126,7 +126,7 @@ def CTDE_train(
                     if random_policy:
                         action_all[i] = np.random.randint(env.n_actions)
                     else:
-                        action_all[i] = central_server.choose_action(obs)
+                        action_all[i] = iot_RL_list[i].choose_action(obs)
             for a in action_all:
                 action_hist[a] += 1
 
@@ -339,8 +339,16 @@ def main(args):
         args.max_delay, args.task_arrival_prob,
     )
 
+    global_state_dim = (
+    len(env.task_on_process_fog) +
+    len(env.Queue_fog_comp) +
+    len(env.p_fog) +
+    1  # time_count
+    )
+
+
     central_server = HybridDQN(
-        env.n_actions, env.n_features, env.n_lstm_state, env.n_time,
+        env.n_actions, env.n_features, env.n_lstm_state, env.n_time, global_state_dim,
         learning_rate=args.lr, reward_decay=0.9, e_greedy=0.99,
         replace_target_iter=200, memory_size=args.memory_size,
         batch_size=args.batch_size, seed=args.seed,
@@ -351,7 +359,7 @@ def main(args):
     # Placeholder for logging
     iot_RL_list = [
         HybridDQN(
-            env.n_actions, env.n_features, env.n_lstm_state, env.n_time,
+            env.n_actions, env.n_features, env.n_lstm_state, env.n_time, global_state_dim,
             learning_rate=args.lr, memory_size=10, batch_size=10,
             hybrid=False, training_dir=training_dir,
         ) for _ in range(args.num_iot)
@@ -387,4 +395,4 @@ if __name__ == "__main__":
     parser.add_argument("--layers", type=int, default=3)
     parser.add_argument("--memory_size", type=int, default=10000)
 
-    main(parser.parse_args())
+    main(parser.parse_args())arse_args())
