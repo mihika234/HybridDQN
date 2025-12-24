@@ -386,3 +386,11 @@ class Offload:
                 self.b_fog_comp[i, :].flatten()
             ])
         return obs
+    
+    def get_global_state(self):
+        return np.concatenate([
+        np.array(self.task_on_process_fog, dtype=np.float32),   # fog loads
+        np.array(self.Queue_fog_comp, dtype=np.float32),        # fog queue lengths
+        np.array(self.p_fog, dtype=np.float32),                 # channel states
+        np.array([self.time_count], dtype=np.float32)           # global time
+    ], axis=0)
