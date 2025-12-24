@@ -22,6 +22,28 @@ except Exception:
     tf = None
     TENSORCIRCUIT_AVAILABLE = False
 
+class CentralizedCritic(nn.Module):
+    def __init__(self, global_state_dim, action_dim):
+        self.action_dim = action_dim
+        self.global_state_dim = global_state_dim
+        super().__init__()
+
+        self.net = nn.Sequential(
+            nn.Linear(global_state_dim + action_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, 256),
+            nn.ReLU(),
+            nn.Linear(256, 1)
+        )
+
+    def forward(self, state, action):
+        """
+        state:  [B, global_state_dim]
+        action: [B]
+        """
+        action_one_hot = F.one_hot(action, num_classes=self.action_dim).float()
+        x = torch.cat([state, action_one_hot], dim=-1)
+        return self.net(x)
 
 # ============================================================
 # Attention (NO residual)
@@ -159,7 +181,7 @@ class ClassicalNetwork(nn.Module):
 # ============================================================
 class HybridDQN:
     def __init__(
-        self, n_actions, n_features, n_lstm_features, n_time,
+        self, n_actions, n_features, n_lstm_features, n_time,global_state_dim,
         learning_rate=0.001, reward_decay=0.9, e_greedy=1.0,
         replace_target_iter=200, memory_size=10000, batch_size=32,
         e_greedy_increment=0.0005, n_lstm_step=10,
@@ -195,13 +217,25 @@ class HybridDQN:
         self.n_lstm_state = n_lstm_features
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        self.global_state_dim = global_state_dim
+        self.action_dim = n_actions
+
+
         if hybrid:
             if QuantumNetwork is None: raise ImportError("TensorCircuit not available.")
             self.eval_net = QuantumNetwork(qubits, layers, n_actions, N_lstm, n_lstm_features, n_features, N_L1, batch_size, seed, training_dir)
             self.target_net = QuantumNetwork(qubits, layers, n_actions, N_lstm, n_lstm_features, n_features, N_L1, batch_size, seed, training_dir)
+            self.critic = CentralizedCritic(self.global_state_dim, self.action_dim)
+            self.target_critic = CentralizedCritic(self.global_state_dim, self.action_dim)
+            self.target_critic.load_state_dict(self.critic.state_dict())
+
+
         else:
             self.eval_net = ClassicalNetwork(n_actions, n_features, n_lstm_features, N_L1, N_lstm, batch_size, seed)
             self.target_net = ClassicalNetwork(n_actions, n_features, n_lstm_features, N_L1, N_lstm, batch_size, seed)
+            self.critic = CentralizedCritic(self.global_state_dim, self.action_dim)
+            self.target_critic = CentralizedCritic(self.global_state_dim, self.action_dim)
+            self.target_critic.load_state_dict(self.critic.state_dict())
 
         self.optimizer = torch.optim.RMSprop(self.eval_net.parameters(), lr=learning_rate)
         self.loss_fn = nn.MSELoss()
