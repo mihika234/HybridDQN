@@ -1,0 +1,14 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+.venv/
+training/
+__pycache__/
+comparison_results/
+results/
+evaluation/
+
+
