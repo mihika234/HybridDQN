@@ -1,7 +1,3 @@
-"""
-train.py - FINAL CORRECTED VERSION
-"""
-
 import os
 import time
 import json
@@ -16,11 +12,8 @@ import matplotlib.pyplot as plt
 from fog_env import Offload
 from brain import HybridDQN
 from utils import plot_graphs
-from metrics import (
-    action_entropy,
-    action_switching_rate,
-    action_kl_drift,
-)
+from metrics import *
+
 
 np.set_printoptions(threshold=np.inf)
 
@@ -32,37 +25,13 @@ def safe_mean(xs):
 
 
 def generate_bitarrive(env):
-    """
-    Markov-modulated ON–OFF bursty arrival process.
-    Average arrival rate ≈ 0.25.
-    """
-    bitarrive = np.zeros((env.n_time, env.n_iot))
-
-    for t in range(env.n_time):
-        for i in range(env.n_iot):
-
-            # ---- State transition ----
-            if env.iot_burst_state[i] == 0:
-                # OFF → ON
-                if np.random.rand() < env.burst_p_on:
-                    env.iot_burst_state[i] = 1
-            else:
-                # ON → OFF
-                if np.random.rand() < env.burst_p_off:
-                    env.iot_burst_state[i] = 0
-
-            # ---- Arrival probability ----
-            p = env.burst_prob_on if env.iot_burst_state[i] else env.burst_prob_off
-
-            if np.random.rand() < p:
-                bitarrive[t, i] = np.random.uniform(
-                    env.min_bit_arrive, env.max_bit_arrive
-                )
-
-    # No arrivals in tail to allow deadlines to resolve
+    """Generate task arrivals for one episode."""
+    bitarrive = np.random.uniform(
+        env.min_bit_arrive, env.max_bit_arrive, size=(env.n_time, env.n_iot)
+    )
+    bitarrive *= (np.random.rand(env.n_time, env.n_iot) < env.task_arrive_prob)
     bitarrive[-env.max_delay :, :] = 0.0
     return bitarrive
-
 
 
 def CTDE_train(
@@ -83,7 +52,23 @@ def CTDE_train(
     drop_iot_hist = []
     drop_trans_hist = []
     drop_fog_hist = []
-    drop_soft_hist = []
+    episode_actions  = []
+    episode_delays = []
+    episode_energies = []
+    episode_load     = []
+    episode_congestion = []
+    entropy_list = []
+    kl_list = []
+    switch_list = []
+    latency_list = []
+    energy_list = []
+    episode_total_tasks = []
+    prev_A = None
+    # --- ACTION LOGGING ---
+    all_episode_actions = []  # list of episodes
+
+
+    # drop_soft_hist = []
 
 
     fig, axs = plt.subplots(4, figsize=(10, 12), sharex=True)
@@ -99,23 +84,6 @@ def CTDE_train(
     "trans_drop": [],
     "iot_drop": [],
 }
-        # ---------- Advanced policy metrics ----------
-    entropy_list = []
-    switch_list = []
-    kl_list = []
-    latency_list = []
-    energy_list = []
-
-    # ---------- Episode-level traces ----------
-    all_episode_actions = []      # [episode][time][iot]
-    episode_delays = []           # ragged
-    episode_energies = []         # ragged
-    episode_congestion = []       # time series
-    episode_load = []             # scalar
-    episode_total_tasks = []
-
-    prev_A = None
-
     action_hist = np.zeros(env.n_actions, dtype=np.int64)
 
 
@@ -156,6 +124,7 @@ def CTDE_train(
 
         ep_rewards, ep_drops = [], []
         ep_delays, ep_energies = [], []
+        episode_actions = []  # will store [time][iot] actions for this episode
 
         # ---------------------------
         # Episode loop
@@ -165,8 +134,9 @@ def CTDE_train(
     "finished_tasks": [],
     "dropped_tasks": [],
 }
-        episode_actions = []
+
         while True:
+
             action_all = np.zeros(env.n_iot, dtype=int)
 
             for i in range(env.n_iot):
@@ -178,11 +148,14 @@ def CTDE_train(
                         action_all[i] = np.random.randint(env.n_actions)
                     else:
                         action_all[i] = central_server.choose_action(obs)
+            # store actions for this timestep
+            episode_actions.append(action_all.copy())
+
             for i, a in enumerate(action_all):
                 action_hist[a] += 1
                 iot_RL_list[i].do_store_action(episode, env.time_count, a)
 
-            episode_actions.append(action_all.copy())
+
             obs_, lstm_, done, info = env.step(action_all)
             step_diag["fog_congestion"].append(env.fog_iot_m.mean())
             step_diag["finished_tasks"].append(len(info["finished"]))
@@ -249,17 +222,28 @@ def CTDE_train(
 
             if done:
                 break
-        # ---------- Convert actions ----------
-        A = np.array(episode_actions)  # shape [T, N_iot]
-        all_episode_actions.append(A)
-        # ---------- Action entropy ----------
+        
+        T = env.time_count
+        N_iot = env.n_iot
+        all_episode_actions.append(np.array(episode_actions))
+
+        # ---------- Actions: shape [T, N_iot] ----------
+        A = np.zeros((T, N_iot), dtype=int)
+        for t in range(T):
+            for i, iot in enumerate(iot_RL_list):
+                a = iot.action_store[episode][t]
+                if hasattr(a, "cpu"):
+                    a = a.cpu().item()
+                A[t, i] = a
+
+        # episode_actions.append(A)
         entropy_ep = action_entropy(A.flatten(), env.n_actions)
         entropy_list.append(entropy_ep)
 
-        # ---------- Switching rate ----------
+        # Action switching rate
         switch_list.append(action_switching_rate(A))
 
-        # ---------- KL drift ----------
+        # KL drift vs previous episode
         if prev_A is not None:
             kl = action_kl_drift(prev_A.flatten(), A.flatten(), env.n_actions)
         else:
@@ -267,30 +251,32 @@ def CTDE_train(
         kl_list.append(kl)
 
         prev_A = A.copy()
-        # ---------- Task metrics ----------
-        episode_total_tasks.append(env.total_tasks)
 
+        # ================= TASK METRICS (PER EPISODE) =================
+        episode_total_tasks.append(env.total_tasks)
+        latency_list.append(
+            np.mean(ep_delays) if len(ep_delays) > 0 else np.nan
+        )
+
+        energy_list.append(
+            np.mean(ep_energies) if len(ep_energies) > 0 else np.nan
+        )
+        # ---------- Delays (flattened) ----------
         episode_delays.append(
             np.array(ep_delays if len(ep_delays) > 0 else [np.nan], dtype=np.float32)
-        )
+)
 
         episode_energies.append(
             np.array(ep_energies if len(ep_energies) > 0 else [np.nan], dtype=np.float32)
         )
-
+        
         episode_congestion.append(
             np.array(step_diag["fog_congestion"], dtype=np.float32)
-        )
-        latency_list.append(
-            np.mean(ep_delays) if len(ep_delays) > 0 else np.nan
-        )
-        energy_list.append(
-            np.mean(ep_energies) if len(ep_energies) > 0 else np.nan
-        )
+)
 
-        # Realized load (IMPORTANT for burst traffic)
-        episode_load.append(np.mean(bitarrive > 0))
-
+        # ---------- Load (1 scalar per episode) ----------
+        episode_load.append(env.task_arrive_prob)  
+        
         # Decay Epsilon per episode
         central_server.decay_epsilon()
         
@@ -299,7 +285,7 @@ def CTDE_train(
         # ---------------------------
         # Stats & Plotting
         # ---------------------------
-        print(f"Soft drops this episode: {env.soft_drop_count}")
+        # print(f"Soft drops this episode: {env.soft_drop_count}")
 
         episode_rewards.append(safe_mean(ep_rewards))
         episode_dropped.append(safe_mean(ep_drops))
@@ -308,7 +294,7 @@ def CTDE_train(
         drop_iot_hist.append(env.drop_iot_count)
         drop_trans_hist.append(env.drop_trans_count)
         drop_fog_hist.append(env.drop_fog_count)
-        drop_soft_hist.append(env.soft_drop_count)
+        # drop_soft_hist.append(env.soft_drop_count)
 
 
         print(
@@ -343,7 +329,15 @@ def CTDE_train(
     # Normalize and save action histogram
     action_hist = action_hist.astype(np.float64)
     action_hist /= max(action_hist.sum(), 1)
-
+    
+    np.savez(
+    training_dir + "/results/metrics_dump.npz",
+    entropies=np.array(entropy_list),
+    kl_drifts=np.array(kl_list),
+    switch_rates=np.array(switch_list),
+    latency=np.array(latency_list),
+    energy=np.array(energy_list),
+)  
     np.save(os.path.join(training_dir, "results", "action_hist.npy"), action_hist)
     np.save(training_dir + "/results/episode_metrics.npy", diagnostics)
 
@@ -373,60 +367,42 @@ def CTDE_train(
     np.save(os.path.join(training_dir, "results/drop_iot.npy"), drop_iot_hist)
     np.save(os.path.join(training_dir, "results/drop_trans.npy"), drop_trans_hist)
     np.save(os.path.join(training_dir, "results/drop_fog.npy"), drop_fog_hist)
-    np.save(os.path.join(training_dir, "results/drop_soft.npy"), drop_soft_hist)
-        # ---------- Advanced metrics dump ----------
     np.savez(
-        training_dir + "/results/metrics_dump.npz",
-        entropies=np.array(entropy_list),
-        kl_drifts=np.array(kl_list),
-        switch_rates=np.array(switch_list),
-        latency=np.array(latency_list),
-        energy=np.array(energy_list),
-    )
-
-    # ---------- Episode-level metrics ----------
-    np.savez(
-        training_dir + "/results/episode_level_metrics.npz",
-        actions=np.array(all_episode_actions, dtype=object),
-        total_tasks=np.array(episode_total_tasks),
-        delays=np.array(episode_delays, dtype=object),
-        energies=np.array(episode_energies, dtype=object),
-        load=np.array(episode_load),
-        congestion=np.array(episode_congestion, dtype=object),
-    )
-
-    # ---------- Raw actions ----------
+    training_dir + "/results/episode_level_metrics.npz",
+    actions=np.array(episode_actions, dtype=object),
+    total_tasks=np.array(episode_total_tasks),
+    delays=np.array(episode_delays, dtype=object),
+    energies=np.array(episode_energies, dtype=object),
+    load=np.array(episode_load),
+    congestion=np.array(episode_congestion, dtype=object)
+)
     action_dir = os.path.join(training_dir, "actions")
     os.makedirs(action_dir, exist_ok=True)
+
     np.save(
         os.path.join(action_dir, "actions.npy"),
         np.array(all_episode_actions, dtype=object)
-    )
+)
 
+
+
+    # np.save(os.path.join(training_dir, "results/drop_soft.npy"), drop_soft_hist)
 
     print(f"Training finished in {time.time() - start_time:.2f}s")
 
 
-def evaluate(env, central_server, num_episodes, training_dir, random_policy=False):
+def evaluate(env, central_server, num_episodes, random_policy=False):
     rewards, drops = [], []
     delays, energies = [], []
-
-    n_actions = central_server.n_actions
-    total_action_counts = np.zeros(n_actions, dtype=np.int64)
-
-    results_dir = os.path.join(training_dir, "results")
-    plots_dir = os.path.join(training_dir, "plots")
-    os.makedirs(results_dir, exist_ok=True)
-    os.makedirs(plots_dir, exist_ok=True)
 
     for ep in range(num_episodes):
         print(f"[EVAL] episode {ep}")
         bitarrive = generate_bitarrive(env)
         obs, lstm = env.reset(bitarrive)
-
+        
+        # Reset LSTM for clean evaluation
         central_server.reset_lstm()
-        central_server.reset_action_counter()
-
+        
         while True:
             action_all = np.zeros(env.n_iot, dtype=int)
             for i in range(env.n_iot):
@@ -439,9 +415,10 @@ def evaluate(env, central_server, num_episodes, training_dir, random_policy=Fals
                         if random_policy
                         else central_server.choose_action(o, inference=True)
                     )
-            
-            obs, lstm, done, info = env.step(action_all)
 
+            obs, lstm, done, info = env.step(action_all)
+            
+            # Correct aggregation during eval too
             central_server.update_lstm(np.mean(lstm, axis=0))
 
             for evt in info["finished"]:
@@ -451,53 +428,14 @@ def evaluate(env, central_server, num_episodes, training_dir, random_policy=Fals
                     delays.append(evt.get("delay", np.nan))
                     energies.append(evt.get("energy", np.nan))
 
-            if done:
-                break
+            if done: break
 
-        total_action_counts += central_server.episode_action_counts
-
-    # -------- Metrics --------
-    eval_metrics = {
+    return {
         "avg_rewards": safe_mean(rewards),
         "avg_dropped": safe_mean(drops),
         "avg_delay": safe_mean(delays),
-        "avg_energy": safe_mean(energies),
+        "avg_energy": safe_mean(energies)
     }
-
-    # -------- Save metrics --------
-    eval_path = os.path.join(results_dir, "eval_results.txt")
-    with open(eval_path, "w") as f:
-        for k, v in eval_metrics.items():
-            f.write(f"{k}: {v}\n")
-
-    # -------- Save action data --------
-    np.save(os.path.join(results_dir, "eval_action_counts.npy"), total_action_counts)
-
-    action_dist = total_action_counts / max(total_action_counts.sum(), 1)
-    np.save(os.path.join(results_dir, "eval_action_dist.npy"), action_dist)
-
-    # -------- Plot: absolute counts --------
-    plt.figure(figsize=(6, 4))
-    plt.bar(range(n_actions), total_action_counts)
-    plt.xlabel("Action")
-    plt.ylabel("Number of tasks")
-    plt.title("Action usage during evaluation")
-    plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, "eval_action_counts.png"), dpi=300)
-    plt.close()
-
-    # -------- Plot: normalized distribution --------
-    plt.figure(figsize=(6, 4))
-    plt.bar(range(n_actions), action_dist)
-    plt.xlabel("Action")
-    plt.ylabel("Probability")
-    plt.title("Normalized action distribution (evaluation)")
-    plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, "eval_action_dist.png"), dpi=300)
-    plt.close()
-
-    return eval_metrics
-
 
 
 def main(args):
@@ -547,8 +485,7 @@ def main(args):
         training_dir=training_dir,
     )
 
-    eval_results = evaluate(env, central_server, 30, training_dir)
-
+    eval_results = evaluate(env, central_server, 30)
 
     print("Evaluation (50 eps):", eval_results)
 
@@ -572,7 +509,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=0.001)
     parser.add_argument("--learning_freq", type=int, default=10)
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=4)
     parser.add_argument("--plot", action="store_true")
     parser.add_argument("--random", action="store_true")
     parser.add_argument("--path", type=str, default=None)
@@ -580,5 +517,4 @@ if __name__ == "__main__":
     parser.add_argument("--qubits", type=int, default=3)
     parser.add_argument("--layers", type=int, default=3)
     parser.add_argument("--memory_size", type=int, default=10000)
-
     main(parser.parse_args())

@@ -1,6 +1,8 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import json
+import pandas as pd
 
 # -------------------------------
 # CONFIG
@@ -166,6 +168,8 @@ def plot_drop_breakdown(
     plt.savefig(os.path.join(save_path, "drop_breakdown.png"), dpi=300)
     plt.close()
 
+
+
 # Call drop breakdown plot
 if all(x is not None for x in [drop_iot, drop_trans, drop_fog, drop_soft]):
     plot_drop_breakdown(
@@ -174,3 +178,111 @@ if all(x is not None for x in [drop_iot, drop_trans, drop_fog, drop_soft]):
     )
 
 print("✅ Diagnostic plots saved to:", SAVE_DIR)
+
+rv_return = load("rv_return.npy")
+rv_drop   = load("rv_drop.npy")
+rv_energy = load("rv_energy.npy")
+
+if rv_return is not None and rv_drop is not None:
+    plt.figure(figsize=(8, 4))
+    plt.plot(rv_return, label="Return variance")
+    plt.plot(rv_drop, label="Drop-rate variance")
+    plt.axhline(0.01, linestyle="--", color="gray", label="Stability threshold")
+    plt.xlabel("Episode")
+    plt.ylabel("Rolling Variance")
+    plt.title("Training Stability (Rolling Variance)")
+    plt.legend()
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(f"{SAVE_DIR}/rolling_variance.png", dpi=300)
+    plt.close()
+
+if rv_energy is not None:
+    plt.figure(figsize=(8, 4))
+    plt.plot(rv_energy, label="Energy variance")
+    plt.axhline(0.01, linestyle="--", color="gray")
+    plt.xlabel("Episode")
+    plt.ylabel("Rolling Variance")
+    plt.title("Energy Consumption Stability")
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(f"{SAVE_DIR}/energy_variance.png", dpi=300)
+    plt.close()
+
+# ============================================================
+# 9. EPISODE METRICS (CORE LEARNING CURVES)
+# ============================================================
+csv_path = os.path.join(RESULTS_DIR, "episode_metrics.csv")
+if os.path.exists(csv_path):
+    df = pd.read_csv(csv_path)
+
+    fig, axs = plt.subplots(2, 2, figsize=(10, 8), sharex=True)
+
+    axs[0, 0].plot(df["reward"])
+    axs[0, 0].set_title("Episode Reward")
+
+    axs[0, 1].plot(df["drop"])
+    axs[0, 1].set_title("Drop Ratio")
+
+    axs[1, 0].plot(df["delay"])
+    axs[1, 0].set_title("Average Delay")
+
+    axs[1, 1].plot(df["energy"])
+    axs[1, 1].set_title("Average Energy")
+
+    for ax in axs.flat:
+        ax.grid(alpha=0.3)
+
+    plt.suptitle("Episode-Level Performance Metrics")
+    plt.tight_layout()
+    plt.savefig(f"{SAVE_DIR}/episode_metrics.png", dpi=300)
+    plt.close()
+
+# ============================================================
+# 10. STABILITY SUMMARY (TABLE → FIGURE)
+# ============================================================
+stability_path = os.path.join(RESULTS_DIR, "stability.json")
+if os.path.exists(stability_path):
+    with open(stability_path, "r") as f:
+        stability = json.load(f)
+
+    fig, ax = plt.subplots(figsize=(6, 2))
+    ax.axis("off")
+
+    table_data = [
+        ["Return Stability Episode", stability.get("return_stability_episode", "N/A")],
+        ["Drop-rate Stability Episode", stability.get("drop_rate_stability_episode", "N/A")],
+    ]
+
+    table = ax.table(
+        cellText=table_data,
+        colLabels=["Metric", "Episode"],
+        loc="center",
+        cellLoc="center"
+    )
+
+    table.scale(1, 1.5)
+    ax.set_title("Time-to-Stability Summary")
+
+    plt.tight_layout()
+    plt.savefig(f"{SAVE_DIR}/stability_table.png", dpi=300)
+    plt.close()
+
+# ============================================================
+# 11. EVALUATION SUMMARY (TEXT → FIGURE)
+# ============================================================
+eval_path = os.path.join(RESULTS_DIR, "eval_results.txt")
+if os.path.exists(eval_path):
+    with open(eval_path, "r") as f:
+        eval_text = f.read()
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.axis("off")
+    ax.text(0.01, 0.99, eval_text, va="top", ha="left", family="monospace")
+
+    ax.set_title("Evaluation Results")
+    plt.tight_layout()
+    plt.savefig(f"{SAVE_DIR}/evaluation_results.png", dpi=300)
+    plt.close()
+
+print("✅ All stability + evaluation plots saved to:", SAVE_DIR)

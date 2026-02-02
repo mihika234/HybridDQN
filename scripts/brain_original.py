@@ -1,4 +1,3 @@
-
 import os
 import time
 import math
@@ -89,16 +88,15 @@ if TENSORCIRCUIT_AVAILABLE:
                     c.rz(q, theta=weights[layer, q, 0])
                     c.ry(q, theta=weights[layer, q, 1])
                     c.rz(q, theta=weights[layer, q, 2])
-                # if self.n > 1:
-                #     for q in range(self.n - 1):
-                #         c.cnot(q, q + 1)
-                #     c.cnot(self.n - 1, 0)
+                if self.n > 1:
+                    for q in range(self.n - 1):
+                        c.cnot(q, q + 1)
+                    c.cnot(self.n - 1, 0)
                 # if self.n >= 2:
+                #      c.cnot(1, 2)
+                # if self.n >= 3:
                 #     c.cnot(0, 1)
-                if self.n >= 3:
-                    c.cnot(0, 1)
-                    c.cnot(1, 2)
-
+                #     c.cnot(1, 2)
             return self.K.stack([self.K.real(c.expectation((tc.gates.z(), [q]))) for q in range(self.n)])
 
         def _save_circuit(self):
@@ -228,7 +226,7 @@ class HybridDQN:
         self.delay_store = []
         self.energy_store = []
         self.epsilon_store = []
-        
+
         self.lstm_history = deque(
             [torch.zeros(self.n_lstm_state).to(self.device) for _ in range(n_lstm_step)],
             maxlen=n_lstm_step
@@ -277,22 +275,6 @@ class HybridDQN:
         if len(self.memory) < self.max_memory_size: self.memory.append(data)
         else: self.memory[self.memory_counter % self.max_memory_size] = data
         self.memory_counter += 1
-        
-    def finalize_episode_entropy(self):
-        counts = self.episode_action_counts.astype(np.float64)
-        total = counts.sum()
-
-        if total == 0:
-            self.action_entropy_store.append(0.0)
-            return
-
-        probs = counts / total
-        probs = probs[probs > 0]  # avoid log(0)
-
-        entropy = -np.sum(probs * np.log(probs)) / np.log(self.n_actions)
-        self.action_entropy_store.append(entropy)
-
-
 
     def learn(self):
         if len(self.memory) < self.batch_size + self.n_lstm_step: return
@@ -376,6 +358,20 @@ class HybridDQN:
     def do_store_action(self, ep, t, a):
         while ep >= len(self.action_store): self.action_store.append(-np.ones(self.n_time))
         self.action_store[ep][t] = a
+    
+    def finalize_episode_entropy(self):
+        counts = self.episode_action_counts.astype(np.float64)
+        total = counts.sum()
+        if total == 0:
+            self.action_entropy_store.append(0.0)
+            return
+
+        probs = counts / total
+        probs = probs[probs > 0]  # avoid log(0)
+
+        entropy = -np.sum(probs * np.log(probs))
+        self.action_entropy_store.append(entropy)
+
 
     def save(self, path=None):
         path = path or self.training_dir
@@ -389,4 +385,3 @@ class HybridDQN:
         else: self.target_net.load_state_dict(self.eval_net.state_dict())
         if self.hybrid and os.path.exists(f"{path}/pqc_weights.npy"):
             self.eval_net.weights.data.copy_(torch.from_numpy(np.load(f"{path}/pqc_weights.npy")))
-
