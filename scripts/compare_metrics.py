@@ -2,9 +2,9 @@ import pandas as pd
 import numpy as np
 
 # ---------------- paths ----------------
-CLASSICAL_PATH = "training/classical/original env/summary_metrics.csv"
-QUANTUM_PATH   = "training/quantum/original env/summary_metrics_quantum.csv"
-OUT_PATH       = "training/metric_comparison_classical_vs_quantum.csv"
+CLASSICAL_PATH = "training/new environment final/classical/summary_metrics.csv"
+QUANTUM_PATH   = "training/new environment final/quantum/summary_metrics_quantum.csv"
+OUT_PATH       = "training/metric_comparison_classical_vs_quantum_new.csv"
 
 # ---------------- load ----------------
 cl = pd.read_csv(CLASSICAL_PATH)

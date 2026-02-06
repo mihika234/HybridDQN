@@ -1,18 +1,23 @@
 import pandas as pd
 import numpy as np
 
-CLASSICAL_PATH = "training/new environment final/classical/summary_metrics.csv"
-QUANTUM_PATH   = "training/new environment final/quantum/summary_metrics_quantum.csv"
-OUT_PATH       = "training/new environment final/per_run_classical_vs_quantum_new.csv"
+# ================= PATHS =================
+CLASSICAL_PATH = "training/new environment final/baseline/classical/summary_metrics.csv"
+QUANTUM_PATH   = "training/new environment final/baseline/quantum/summary_metrics.csv"
+OUT_PATH       = "training/new environment final/per_run_classical_vs_quantum_new_new.csv"
 
-# ---------------- load ----------------
+# ================= LOAD =================
 cl = pd.read_csv(CLASSICAL_PATH)
 qt = pd.read_csv(QUANTUM_PATH)
 
-# ---------------- parse run ----------------
+# ================= PARSE RUN =================
 def parse_run(df):
-    # expected format: "classical 0.2 15" or "quantum 0.2 15"
-    parts = df["run"].str.split(" ", expand=True)
+    """
+    Expected run format:
+    classical_0.2_15
+    quantum_0.2_15
+    """
+    parts = df["run"].str.split("_", expand=True)
     df["algo"] = parts[0]
     df["epsilon"] = parts[1].astype(float)
     df["load"] = parts[2].astype(int)
@@ -21,11 +26,11 @@ def parse_run(df):
 cl = parse_run(cl)
 qt = parse_run(qt)
 
-# ---------------- numeric metric columns ----------------
+# ================= NUMERIC METRICS =================
 metric_cols = cl.select_dtypes(include=np.number).columns.tolist()
 metric_cols = [c for c in metric_cols if c not in ["epsilon", "load"]]
 
-# ---------------- pair runs ----------------
+# ================= PAIR RUNS =================
 paired = pd.merge(
     cl,
     qt,
@@ -37,7 +42,7 @@ paired = pd.merge(
 if paired.empty:
     raise RuntimeError("No matched classical–quantum runs found")
 
-# ---------------- compute per-run deltas ----------------
+# ================= COMPUTE DELTAS =================
 rows = []
 
 for _, row in paired.iterrows():
@@ -51,7 +56,7 @@ for _, row in paired.iterrows():
         if pd.isna(c) or pd.isna(q) or c == 0:
             pct = np.nan
         else:
-            pct = (q - c) / c * 100
+            pct = (q - c) / c * 100.0
 
         rows.append({
             "epsilon": eps,
@@ -64,11 +69,11 @@ for _, row in paired.iterrows():
 
 result = pd.DataFrame(rows)
 
-# ---------------- sort for easy mining ----------------
+# ================= SORT =================
 result["abs_pct_change"] = result["pct_change"].abs()
 result = result.sort_values("abs_pct_change", ascending=False)
 
-# ---------------- save ----------------
+# ================= SAVE =================
 result.to_csv(OUT_PATH, index=False)
 
 pd.set_option("display.float_format", "{:.3f}".format)

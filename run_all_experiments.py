@@ -5,8 +5,8 @@ PYTHON = sys.executable  # use current venv/python
 
 # TASK_PROBS = ["0.05", "0.08", "0.10", "0.12", "0.15"]
 # TASK_PROBS = ["0.22", "0.24", "0.25", "0.27", "0.3", "0.35"]
-TASK_PROBS = ["0.27", "0.3", "0.35"]
-MAX_DELAYS = ["20", "25", "30"]
+TASK_PROBS = ["0.3"]
+MAX_DELAYS = ["25"]
 SEED = ['8', '19', '77', '65', '1975']
 
 def run(name, args):

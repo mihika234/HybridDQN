@@ -31,30 +31,48 @@ def safe_mean(xs):
     return float(xs.mean()) if xs.size > 0 else float("nan")
 
 
+# def generate_bitarrive(env):
+#     """
+#     Markov-modulated ON–OFF bursty arrival process.
+#     Average arrival rate ≈ 0.25.
+#     """
+#     bitarrive = np.zeros((env.n_time, env.n_iot))
+
+#     for t in range(env.n_time):
+#         for i in range(env.n_iot):
+
+#             # ---- State transition ----
+#             if env.iot_burst_state[i] == 0:
+#                 # OFF → ON
+#                 if np.random.rand() < env.burst_p_on:
+#                     env.iot_burst_state[i] = 1
+#             else:
+#                 # ON → OFF
+#                 if np.random.rand() < env.burst_p_off:
+#                     env.iot_burst_state[i] = 0
+
+#             # ---- Arrival probability ----
+#             p = env.burst_prob_on if env.iot_burst_state[i] else env.burst_prob_off
+
+#             if np.random.rand() < p:
+#                 bitarrive[t, i] = np.random.uniform(
+#                     env.min_bit_arrive, env.max_bit_arrive
+#                 )
+
+#     # No arrivals in tail to allow deadlines to resolve
+#     bitarrive[-env.max_delay :, :] = 0.0
+#     return bitarrive
+
 def generate_bitarrive(env):
     """
-    Markov-modulated ON–OFF bursty arrival process.
-    Average arrival rate ≈ 0.25.
+    Baseline i.i.d. Bernoulli arrival process (stationary traffic).
+    Average arrival rate = task_arrival_prob.
     """
     bitarrive = np.zeros((env.n_time, env.n_iot))
 
     for t in range(env.n_time):
         for i in range(env.n_iot):
-
-            # ---- State transition ----
-            if env.iot_burst_state[i] == 0:
-                # OFF → ON
-                if np.random.rand() < env.burst_p_on:
-                    env.iot_burst_state[i] = 1
-            else:
-                # ON → OFF
-                if np.random.rand() < env.burst_p_off:
-                    env.iot_burst_state[i] = 0
-
-            # ---- Arrival probability ----
-            p = env.burst_prob_on if env.iot_burst_state[i] else env.burst_prob_off
-
-            if np.random.rand() < p:
+            if np.random.rand() < env.task_arrive_prob:
                 bitarrive[t, i] = np.random.uniform(
                     env.min_bit_arrive, env.max_bit_arrive
                 )
@@ -62,8 +80,6 @@ def generate_bitarrive(env):
     # No arrivals in tail to allow deadlines to resolve
     bitarrive[-env.max_delay :, :] = 0.0
     return bitarrive
-
-
 
 def CTDE_train(
     env,
@@ -506,7 +522,18 @@ def main(args):
     # torch seed handled in brain.py
 
     now = datetime.now()
-    training_dir = args.path or f"training/{now:%Y-%m-%d_%H-%M-%S}/"
+    # Model type
+    model_tag = "quantum" if args.hybrid else "classical"
+
+    # Traffic + deadline tags
+    lambda_tag = f"{args.task_arrival_prob}"
+    delay_tag = f"{args.max_delay}"
+
+    # Timestamp
+    time_tag = f"{now:%Y-%m-%d_%H-%M-%S}"
+
+    training_dir = args.path or f"training/{model_tag}_{lambda_tag}_{delay_tag}_{time_tag}/"
+
 
     if os.path.exists(training_dir): rmtree(training_dir)
     os.makedirs(training_dir + "/plots", exist_ok=True)
