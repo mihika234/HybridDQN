@@ -9,8 +9,8 @@ from shutil import rmtree
 import numpy as np
 import matplotlib.pyplot as plt
 
-from fog_env import Offload
-from brain import HybridDQN
+from fog_env_new import Offload
+from brain_angular import HybridDQN
 from utils import plot_graphs
 from metrics import *
 
