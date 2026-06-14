@@ -2,10 +2,17 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+
+
 
 
 def plot_graphs(axs, train_cost, train_dropped, train_delay, train_energy, show=False, save=False,
                 path=None):
+    if save and path is not None:
+        plots_dir = os.path.join(path, "plots")
+        os.makedirs(plots_dir, exist_ok=True)
+
     x = np.arange(len(train_cost)).tolist()
 
     axs[0].clear()
@@ -37,20 +44,28 @@ def plot_graphs(axs, train_cost, train_dropped, train_delay, train_energy, show=
     axs[3].legend(loc='upper right')
 
 
-    if save:
-        plt.savefig(path + "plots/learning_curves.png")
+    if save and path is not None:
+       plt.savefig(os.path.join(plots_dir, "learning_curves.png"))
 
-        with open(path + 'plots/avg_cost.npy', 'wb') as f:
-            np.save(f, np.array(train_cost))
+       np.save(
+        os.path.join(plots_dir, "avg_cost.npy"),
+        np.array(train_cost)
+       )
 
-        with open(path + 'plots/dropped_ratio.npy', 'wb') as f:
-            np.save(f, np.array(train_dropped))
+       np.save(
+        os.path.join(plots_dir, "dropped_ratio.npy"),
+        np.array(train_dropped)
+       )
 
-        with open(path + 'plots/avg_delay.npy', 'wb') as f:
-            np.save(f, np.array(train_delay))
+       np.save(
+        os.path.join(plots_dir, "avg_delay.npy"),
+        np.array(train_delay)
+       )
 
-        with open(path + 'plots/avg_energy.npy', 'wb') as f:
-            np.save(f, np.array(train_energy))
+       np.save(
+        os.path.join(plots_dir, "avg_energy.npy"),
+        np.array(train_energy)
+       )
 
     if show:
         plt.show(block=False)
